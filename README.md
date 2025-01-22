@@ -1,8 +1,13 @@
 # Oracle Database Scripting Tool
 
+Scripting GUI-based tool which orchestrated the Turbonomic REST API to satisfy a customer use case regarding target configuration for Oracle targets. Some of the features of the tool are as follows:
+- Add database targets en masse via a CSV file, where before this would have to be done individually
+- Remove all malfunctioning targets that failed to discover or connect at once, instead of selected each in the UI and deleting manually.
+- Edit database credential info en masse via input through the tool's UI. Select any subset of Oracle targets in the UI and collectively rotate their passwords, for example. Once changed, the targets will be re-discovered.
+
 Built by Lucas Hancock (lucashancock@ibm.com)
 
-Built for AON
+## Frontend GUI Image
 
 <img width="1294" alt="Screenshot 2025-01-22 at 12 47 21 PM" src="https://github.com/user-attachments/assets/143c6310-cfe8-4263-bdc8-9a661e84257c" />
 
