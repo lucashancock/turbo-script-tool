@@ -1,7 +1,10 @@
 # Oracle Database Scripting Tool
 
 Built by Lucas Hancock (lucashancock@ibm.com)
+
 Built for AON
+
+<img width="1294" alt="Screenshot 2025-01-22 at 12 47 21 PM" src="https://github.com/user-attachments/assets/143c6310-cfe8-4263-bdc8-9a661e84257c" />
 
 ## Installation & Running
 
