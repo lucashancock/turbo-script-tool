@@ -8,6 +8,7 @@ from oracle_script import get_targets
 from oracle_script import update_target
 from oracle_script import delete_oracle_targets
 from oracle_script import delete_target
+from oracle_script import delete_scope
 
 class TargetManagerApp:
     def __init__(self, root, ip_address, username, password):
@@ -81,10 +82,6 @@ class TargetManagerApp:
         self.targetPassword_entry = ttk.Entry(self.form_frame, width=30, textvariable=self.db_password_var)
         self.targetPassword_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
-        ttk.Label(self.form_frame, text="Target Scope/Group Name:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        self.targetEntity_entry = ttk.Entry(self.form_frame, width=30, textvariable=self.target_entity_var)
-        self.targetEntity_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
-
         ttk.Label(self.form_frame, text="Port:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
         self.port_entry = ttk.Entry(self.form_frame, width=30, textvariable=self.port_var)
         self.port_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
@@ -104,8 +101,8 @@ class TargetManagerApp:
         self.delete_selection_button.grid(row=8, column=0, padx=5, pady=5, sticky="ew")
 
         # Treeview to show targets
-        self.target_treeview = ttk.Treeview(self.form_frame, columns=("uuid", "displayName", "username", "port", "databaseId", "status", "lastEditTime"), show="headings", selectmode="extended")
-        self.target_treeview.grid(row=1, column=2, rowspan=7, padx=5, pady=5, sticky="news")
+        self.target_treeview = ttk.Treeview(self.form_frame, columns=("uuid", "displayName", "username", "port", "databaseId", "status", "lastEditTime", "scope"), show="headings", selectmode="extended")
+        self.target_treeview.grid(row=1, column=2, rowspan=8, padx=5, pady=5, sticky="news")
 
         # Define column headings
         self.target_treeview.heading("uuid", text="UUID")
@@ -115,6 +112,7 @@ class TargetManagerApp:
         self.target_treeview.heading("username", text="Username")
         self.target_treeview.heading("lastEditTime", text="Last Edit Time")
         self.target_treeview.heading("status", text="Status")
+        self.target_treeview.heading("scope", text="Scope")
 
         # Set column widths
         self.target_treeview.column("uuid", width=30, anchor="center")
@@ -124,7 +122,7 @@ class TargetManagerApp:
         self.target_treeview.column("displayName", width=120, anchor="center")
         self.target_treeview.column("lastEditTime", width=100, anchor="center")
         self.target_treeview.column("status", width=150, anchor="center")
-
+        self.target_treeview.column("scope", width=50, anchor="center")
         # Fetch button to populate the treeview
         self.fetch_button = ttk.Button(self.form_frame, text="Fetch All Targets", command=self.fetch_all_targets)
         self.fetch_button.grid(row=0, column=2, padx=5, pady=5, sticky="ew")
@@ -158,6 +156,7 @@ class TargetManagerApp:
             username = next((field["value"] for field in target["inputFields"] if field["name"] == "username"), None)
             port = next((field["value"] for field in target["inputFields"] if field["name"] == "port"), None)
             databaseId = next((field["value"] for field in target["inputFields"] if field["name"] == "databaseID"), None)
+            scope = next((field["value"] for field in target["inputFields"] if field["name"] == "targetEntities"), None)
             self.target_treeview.insert("", "end", values=(
                 uuid,            
                 displayName,      
@@ -165,9 +164,9 @@ class TargetManagerApp:
                 port,             
                 databaseId,
                 status,         
-                lastEditTime
+                lastEditTime,
+                scope
                 ))
-
     
     def show_selected_json(self):
         selected_items = self.target_treeview.selection()
@@ -188,8 +187,6 @@ class TargetManagerApp:
                 input_fields.append({"name": "username", "value": self.db_username_var.get()})
             if self.db_password_var.get():
                 input_fields.append({"name": "password", "value": self.db_password_var.get()})
-            if self.target_entity_var.get():
-                input_fields.append({"name": "targetEntities", "value": self.target_entity_var.get()})
             if self.port_var.get():
                 input_fields.append({"name": "port", "value": self.port_var.get()})
             if self.db_ID_var.get(): 
@@ -221,7 +218,11 @@ class TargetManagerApp:
 
             for selected_target in selected_targets:
                 uuid = selected_target.get("uuid")
+                scope_uuid = selected_target.get("scope")
+                # delete the target
                 delete_target(self.ipAddress_var.get(), self.token.get(), uuid) 
+                # delete the associated group
+                delete_scope(self.ipAddress_var.get(), self.token.get(), scope_uuid)
             messagebox.showinfo("Deleted", "The selected targets have been deleted.")
         else:
             messagebox.showinfo("Deletion Cancelled", "The deletion process was cancelled.")
@@ -245,7 +246,9 @@ class TargetManagerApp:
         payload = oracle_csv_to_json(self.ipAddress_var.get(), self.token.get(), self.filepath.get(), header=True)
         if payload:
             create_oracle_targets(self.ipAddress_var.get(), self.token.get(), params=payload) 
-
+        else:
+            messagebox.showinfo("Error", "Could not create the targets, check the CSV file for correct formatting.")
+            return
         messagebox.showinfo("Created", "Targets from CSV have been created, check Turbonomic UI.")
 
 # ---

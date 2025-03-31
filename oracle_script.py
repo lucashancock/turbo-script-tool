@@ -5,7 +5,7 @@ from requests.exceptions import HTTPError, Timeout, RequestException
 
 # Set up logging
 # Logging turned off because level set to critical!
-logging.basicConfig(level=logging.CRITICAL, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
 logging.captureWarnings(True)
 logger = logging.getLogger()
@@ -14,6 +14,7 @@ logger = logging.getLogger()
 TARGETS_ENDPOINT = "/api/v3/targets"
 LOGIN_ENDPOINT = "/api/v3/login?hateoas=true"
 SEARCH_ENDPOINT = "/api/v3/search"
+GROUPS_ENDPOINT = "/api/v3/groups"
 
 # Configurations for requests
 TIMEOUT = 10  # seconds
@@ -110,6 +111,31 @@ def delete_target(api_url, token, target_uuid):
         logger.error(f"Error occurred while updating target {target_uuid}: {e}")
         return None
 
+def delete_scope(api_url, token, scope_uuid):
+    if not token:
+        logger.error("Token is required for deleting targets.")
+        return None
+    if not scope_uuid:
+        logger.error("Scope UUID is required.")
+        return None
+    try:
+        logger.info(f"Attempting to delete scope with UUID: {scope_uuid}...")
+        url = f"{api_url}{GROUPS_ENDPOINT}/{scope_uuid}"
+        
+        # Sending the PUT request to update the target
+        response = request_with_retries("DELETE", url, headers={"cookie": token})
+
+        # Check if the response was successful
+        if response.status_code == 200:
+            logger.info(f"Scope {scope_uuid} successfully deleted.")
+            return response.json()
+        else:
+            logger.error(f"Failed to delete scope {scope_uuid}. Status code: {response.status_code}.")
+            return None
+    except Exception as e:
+        logger.error(f"Error occurred while deleting scope {scope_uuid}: {e}")
+        return None
+
 def delete_oracle_targets(api_url, token="", params={}):
     if not token:
         logger.error("Token is required for deleting Oracle targets.")
@@ -121,9 +147,11 @@ def delete_oracle_targets(api_url, token="", params={}):
         results = targets.json()
         for result in results:
             uuid = result.get("uuid")
+            scope_uuid = next((field["value"] for field in result["inputFields"] if field["name"] == "targetEntities"), None)
             try:
                 response = request_with_retries("DELETE", f"{api_url}{TARGETS_ENDPOINT}/{uuid}", headers={"cookie": token})
-                if response.status_code == 500:
+                response2 = request_with_retries("DELETE", f"{api_url}{GROUPS_ENDPOINT}/{scope_uuid}", headers={"cookie": token})
+                if response.status_code == 500 or response2.status_code == 500:
                     logger.error(f"Server error (500) while deleting target {uuid}. Skipping this target.")
                     continue  
                 if not response.ok:
@@ -197,15 +225,13 @@ def oracle_csv_to_json(api_url, token, csv_file, header=True):
                 skipped_header = True
                 continue  # Skip the header row
             
-            # Get the UUID of the Group provided in the CSV file.
-            scope_uuid = get_scope_uuid(api_url, token, row[4])
+            scope_uuid = create_group(api_url, token, row[4], row[8]) 
             if not scope_uuid:
-                logger.warning(f"Scope UUID not found for {row[1]} (scope: {row[4]}). Skipping row.")
+                logger.WARN(f"Couldn't create group for: {row[4]}, {row[8]}. Check VMname matches an actual VM. Skipping this row.")
                 continue
-            else:
-                logger.info(f"Scope UUID found for {row[1]} (scope: {row[4]})")
-
             # Construct the data for creating the target
+            logger.info(scope_uuid["uuid"]) 
+
             data = {
                 "category": "Applications and Databases",
                 "type": row[0],  
@@ -213,7 +239,7 @@ def oracle_csv_to_json(api_url, token, csv_file, header=True):
                     {"name": "targetId", "value": row[1]},
                     {"name": "username", "value": row[2]},
                     {"name": "password", "value": row[3]},
-                    {"name": "targetEntities", "value": scope_uuid},  
+                    {"name": "targetEntities", "value": scope_uuid["uuid"]},  
                     {"name": "port", "value": row[5]},
                     {"name": "databaseID", "value": row[6]},
                     {"name": "fullValidation", "value": row[7].strip().lower()} 
@@ -223,18 +249,65 @@ def oracle_csv_to_json(api_url, token, csv_file, header=True):
             payload.append(data)
     return payload
 
-def get_scope_uuid(api_url, token, scope_name):
+def create_group(api_url, token, gname, vm_name):
+    # Check inputs
+    if not token:
+        logger.error("Token is required for creating group.")
+        return None
+    if not gname or not vm_name:
+        logger.error("Group_name and VM_name should be supplied in the CSV file.")
+        return None
+
+    # If group name not specified, generate it.
+    if gname.strip() == "None":
+        group_name = vm_name + "_Group_Oracle_DB_Target"
+    else:
+        group_name = gname
+
     try:
-        logger.info(f"Looking up UUID for scope: {scope_name}")
-        response = request_with_retries(method="GET", url=f"{api_url}{SEARCH_ENDPOINT}", params={"q": scope_name, "types": ["Group"]}, headers={"cookie": token})
+        logger.info(f"Attempting to create group with name: {group_name} and VM: {vm_name}...")
+        url = f"{api_url}{GROUPS_ENDPOINT}"
+
+        # Get the UUID for the VM specified in the row of the CSV
+        vm_uuid = get_vm_uuid(api_url, token, vm_name)
+        if not vm_uuid:
+            logger.error(f"Could not create group because couldn't fetch VM uuid.")
+            return None
+
+        # Create the payload to send to the Turbo backend to create the group
+        data = {"criteriaList":[],
+                "displayName":group_name,
+                "groupType":"VirtualMachine",
+                "isStatic":True,
+                "memberUuidList":[vm_uuid]
+                }
+
+        # POST to create the group
+        create = request_with_retries("POST", url, data=data, headers={"cookie": token})
+
+        # Check if the response was successful
+        if create.status_code == 200:
+            logger.info(f"Group successfully created")
+            return create.json()
+        else:
+            logger.error(f"Failed to create group in API req. {group_name}. Status code: {create.status_code}.")
+            return None
+    except Exception as e:
+        logger.error(f"Error occurred while updating target {group_name}: {e}")
+        return None
+
+def get_vm_uuid(api_url, token, vm_name):
+    try:
+        logger.info(f"Looking up UUID for VM: {vm_name}")
+        response = request_with_retries(method="GET", url=f"{api_url}{SEARCH_ENDPOINT}", params={"q": vm_name, "types": ["VirtualMachine"]}, headers={"cookie": token})
         res_data = response.json()
         
         if len(res_data) != 1:
-            logger.warning(f"Expected 1 result for scope {scope_name}, found {len(res_data)}. Skipping.")
+            logger.warning(f"Expected 1 result for VM {vm_name}, found {len(res_data)}. Skipping.")
             return None
         return res_data[0]['uuid']
     except Exception as e:
-        logger.error(f"Failed to retrieve scope UUID for {scope_name}: {e}")
+        logger.error(f"Failed to retrieve scope UUID for {vm_name}: {e}")
         return None
 
 # Function to perform PUT request on /targets/{target_UUID}

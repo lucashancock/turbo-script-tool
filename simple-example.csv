@@ -1,2 +1,0 @@
-﻿Oracle,Target_name,Username,Password,Scope,Oracle_Port,Oracle_System_Identifier,Full_validation
-Oracle,oracle.example.com,admin,pass1,Meditech,1521,ORCL,false
