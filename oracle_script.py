@@ -122,7 +122,6 @@ def delete_scope(api_url, token, scope_uuid):
         logger.info(f"Attempting to delete scope with UUID: {scope_uuid}...")
         url = f"{api_url}{GROUPS_ENDPOINT}/{scope_uuid}"
         
-        # Sending the PUT request to update the target
         response = request_with_retries("DELETE", url, headers={"cookie": token})
 
         # Check if the response was successful
@@ -150,6 +149,7 @@ def delete_oracle_targets(api_url, token="", params={}):
             scope_uuid = next((field["value"] for field in result["inputFields"] if field["name"] == "targetEntities"), None)
             try:
                 response = request_with_retries("DELETE", f"{api_url}{TARGETS_ENDPOINT}/{uuid}", headers={"cookie": token})
+                # delete groups associated with the targets too.
                 response2 = request_with_retries("DELETE", f"{api_url}{GROUPS_ENDPOINT}/{scope_uuid}", headers={"cookie": token})
                 if response.status_code == 500 or response2.status_code == 500:
                     logger.error(f"Server error (500) while deleting target {uuid}. Skipping this target.")
@@ -225,75 +225,79 @@ def oracle_csv_to_json(api_url, token, csv_file, header=True):
                 skipped_header = True
                 continue  # Skip the header row
             
-            scope_uuid = create_group(api_url, token, row[4], row[8]) 
+            scope_uuid = create_group(api_url, token, row[1]) 
             if not scope_uuid:
-                logger.WARN(f"Couldn't create group for: {row[4]}, {row[8]}. Check VMname matches an actual VM. Skipping this row.")
+                logger.warning(f"Couldn't create group for: {row[1]}. Check VMname matches an actual VM. Skipping this row.")
                 continue
             # Construct the data for creating the target
             logger.info(scope_uuid["uuid"]) 
 
+            # Group:  On-Prem - Oracle – ServerName
+            # Target:  On-Prem - Oracle - ServerName-InstanceName
+            
             data = {
                 "category": "Applications and Databases",
-                "type": row[0],  
+                "type": "Oracle",  
                 "inputFields": [
-                    {"name": "targetId", "value": row[1]},
-                    {"name": "username", "value": row[2]},
-                    {"name": "password", "value": row[3]},
+                    {"name": "targetId", "value": f"On-Prem - Oracle - {row[1]}-{row[0]}"},
+                    {"name": "username", "value": row[3]},
+                    {"name": "password", "value": row[4]},
                     {"name": "targetEntities", "value": scope_uuid["uuid"]},  
-                    {"name": "port", "value": row[5]},
-                    {"name": "databaseID", "value": row[6]},
-                    {"name": "fullValidation", "value": row[7].strip().lower()} 
+                    {"name": "port", "value": row[2]},
+                    {"name": "databaseID", "value": row[5]},
+                    {"name": "fullValidation", "value": row[6].strip().lower()} 
                 ]
             }
 
             payload.append(data)
     return payload
 
-def create_group(api_url, token, gname, vm_name):
+def create_group(api_url, token, server_name):
     # Check inputs
     if not token:
         logger.error("Token is required for creating group.")
         return None
-    if not gname or not vm_name:
+    if not server_name:
         logger.error("Group_name and VM_name should be supplied in the CSV file.")
         return None
 
-    # If group name not specified, generate it.
-    if gname.strip() == "None":
-        group_name = vm_name + "_Group_Oracle_DB_Target"
-    else:
-        group_name = gname
+    # TO-DO: search if a group with this name exists
+    logger.info(f"Attempting to find an existing group")
+    response = request_with_retries(method="GET", url=f"{api_url}{SEARCH_ENDPOINT}", params={"q": f"On-Prem - Oracle - {server_name}", "types": ["Group"]}, headers={"cookie": token})
+    existing_groups = response.json()
+    if len(existing_groups) > 0:
+        return existing_groups[0]
 
     try:
-        logger.info(f"Attempting to create group with name: {group_name} and VM: {vm_name}...")
+        logger.info(f"Attempting to create group with for and VM: {server_name}...")
         url = f"{api_url}{GROUPS_ENDPOINT}"
 
         # Get the UUID for the VM specified in the row of the CSV
-        vm_uuid = get_vm_uuid(api_url, token, vm_name)
+        vm_uuid = get_vm_uuid(api_url, token, server_name)
         if not vm_uuid:
             logger.error(f"Could not create group because couldn't fetch VM uuid.")
             return None
 
         # Create the payload to send to the Turbo backend to create the group
         data = {"criteriaList":[],
-                "displayName":group_name,
+                "displayName": f"On-Prem - Oracle - {server_name}",
                 "groupType":"VirtualMachine",
                 "isStatic":True,
                 "memberUuidList":[vm_uuid]
                 }
 
         # POST to create the group
-        create = request_with_retries("POST", url, data=data, headers={"cookie": token})
-
-        # Check if the response was successful
-        if create.status_code == 200:
-            logger.info(f"Group successfully created")
-            return create.json()
-        else:
-            logger.error(f"Failed to create group in API req. {group_name}. Status code: {create.status_code}.")
-            return None
+        if len(existing_groups) == 0:
+            create = request_with_retries("POST", url, data=data, headers={"cookie": token})
+            # Check if the response was successful
+            if create.status_code == 200:
+                logger.info(f"Group successfully created")
+                return create.json()
+            else:
+                logger.error(f"Failed to create group in API req. {server_name}. Status code: {create.status_code}.")
+                return None
     except Exception as e:
-        logger.error(f"Error occurred while updating target {group_name}: {e}")
+        logger.error(f"Error occurred while updating target {server_name}: {e}")
         return None
 
 def get_vm_uuid(api_url, token, vm_name):

@@ -1,3 +1,0 @@
-﻿Type,Display_name,Username,Password,Group_name,Port,Service_name,Authenticate_all,VMname
-Oracle,Oracle_target_1.com,lucas,1234,None,1521,ORCL,True,PLVA01TNOM0003
-Oracle,Oracle_target_2.com,stephen,5678,AutoGroup1,9999,TBNC,False,TWVS01DEXI0011

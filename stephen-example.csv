@@ -1,0 +1,3 @@
+Instance_name,Server_name,Port,Username,Password,Service_name,Authenticate_all
+dtest01,PLVA01TNOM0003,1526,stephen,hair,ORCL,False
+dtest02,TWVS01NCTA0507,9999,lucas,hancock,TBNC,False
