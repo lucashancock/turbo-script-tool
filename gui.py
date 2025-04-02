@@ -8,7 +8,7 @@ from oracle_script import get_targets
 from oracle_script import update_target
 from oracle_script import delete_oracle_targets
 from oracle_script import delete_target
-from oracle_script import delete_scope
+# from oracle_script import delete_scope
 
 class TargetManagerApp:
     def __init__(self, root, ip_address, username, password):
@@ -222,7 +222,7 @@ class TargetManagerApp:
                 # delete the target
                 delete_target(self.ipAddress_var.get(), self.token.get(), uuid) 
                 # delete the associated group
-                delete_scope(self.ipAddress_var.get(), self.token.get(), scope_uuid)
+                # delete_scope(self.ipAddress_var.get(), self.token.get(), scope_uuid)
             messagebox.showinfo("Deleted", "The selected targets have been deleted.")
         else:
             messagebox.showinfo("Deletion Cancelled", "The deletion process was cancelled.")

@@ -111,29 +111,29 @@ def delete_target(api_url, token, target_uuid):
         logger.error(f"Error occurred while updating target {target_uuid}: {e}")
         return None
 
-def delete_scope(api_url, token, scope_uuid):
-    if not token:
-        logger.error("Token is required for deleting targets.")
-        return None
-    if not scope_uuid:
-        logger.error("Scope UUID is required.")
-        return None
-    try:
-        logger.info(f"Attempting to delete scope with UUID: {scope_uuid}...")
-        url = f"{api_url}{GROUPS_ENDPOINT}/{scope_uuid}"
+# def delete_scope(api_url, token, scope_uuid):
+#     if not token:
+#         logger.error("Token is required for deleting targets.")
+#         return None
+#     if not scope_uuid:
+#         logger.error("Scope UUID is required.")
+#         return None
+#     try:
+#         logger.info(f"Attempting to delete scope with UUID: {scope_uuid}...")
+#         url = f"{api_url}{GROUPS_ENDPOINT}/{scope_uuid}"
         
-        response = request_with_retries("DELETE", url, headers={"cookie": token})
+#         response = request_with_retries("DELETE", url, headers={"cookie": token})
 
-        # Check if the response was successful
-        if response.status_code == 200:
-            logger.info(f"Scope {scope_uuid} successfully deleted.")
-            return response.json()
-        else:
-            logger.error(f"Failed to delete scope {scope_uuid}. Status code: {response.status_code}.")
-            return None
-    except Exception as e:
-        logger.error(f"Error occurred while deleting scope {scope_uuid}: {e}")
-        return None
+#         # Check if the response was successful
+#         if response.status_code == 200:
+#             logger.info(f"Scope {scope_uuid} successfully deleted.")
+#             return response.json()
+#         else:
+#             logger.error(f"Failed to delete scope {scope_uuid}. Status code: {response.status_code}.")
+#             return None
+#     except Exception as e:
+#         logger.error(f"Error occurred while deleting scope {scope_uuid}: {e}")
+#         return None
 
 def delete_oracle_targets(api_url, token="", params={}):
     if not token:
@@ -146,12 +146,12 @@ def delete_oracle_targets(api_url, token="", params={}):
         results = targets.json()
         for result in results:
             uuid = result.get("uuid")
-            scope_uuid = next((field["value"] for field in result["inputFields"] if field["name"] == "targetEntities"), None)
+            # scope_uuid = next((field["value"] for field in result["inputFields"] if field["name"] == "targetEntities"), None)
             try:
                 response = request_with_retries("DELETE", f"{api_url}{TARGETS_ENDPOINT}/{uuid}", headers={"cookie": token})
                 # delete groups associated with the targets too.
-                response2 = request_with_retries("DELETE", f"{api_url}{GROUPS_ENDPOINT}/{scope_uuid}", headers={"cookie": token})
-                if response.status_code == 500 or response2.status_code == 500:
+                # response2 = request_with_retries("DELETE", f"{api_url}{GROUPS_ENDPOINT}/{scope_uuid}", headers={"cookie": token})
+                if response.status_code == 500: 
                     logger.error(f"Server error (500) while deleting target {uuid}. Skipping this target.")
                     continue  
                 if not response.ok:
@@ -225,9 +225,9 @@ def oracle_csv_to_json(api_url, token, csv_file, header=True):
                 skipped_header = True
                 continue  # Skip the header row
             
-            scope_uuid = create_group(api_url, token, row[1]) 
+            scope_uuid = create_group(api_url, token, row[0]) 
             if not scope_uuid:
-                logger.warning(f"Couldn't create group for: {row[1]}. Check VMname matches an actual VM. Skipping this row.")
+                logger.warning(f"Couldn't create group for: {row[0]}. Check VMname matches an actual VM. Skipping this row.")
                 continue
             # Construct the data for creating the target
             logger.info(scope_uuid["uuid"]) 
@@ -239,13 +239,13 @@ def oracle_csv_to_json(api_url, token, csv_file, header=True):
                 "category": "Applications and Databases",
                 "type": "Oracle",  
                 "inputFields": [
-                    {"name": "targetId", "value": f"On-Prem - Oracle - {row[1]}-{row[0]}"},
+                    {"name": "targetId", "value": f"On-Prem - Oracle - {row[0]}-{row[1]}"},
                     {"name": "username", "value": row[3]},
                     {"name": "password", "value": row[4]},
                     {"name": "targetEntities", "value": scope_uuid["uuid"]},  
                     {"name": "port", "value": row[2]},
-                    {"name": "databaseID", "value": row[5]},
-                    {"name": "fullValidation", "value": row[6].strip().lower()} 
+                    {"name": "databaseID", "value": row[1]},
+                    {"name": "fullValidation", "value": row[5].strip().lower()} 
                 ]
             }
 
@@ -287,15 +287,14 @@ def create_group(api_url, token, server_name):
                 }
 
         # POST to create the group
-        if len(existing_groups) == 0:
-            create = request_with_retries("POST", url, data=data, headers={"cookie": token})
-            # Check if the response was successful
-            if create.status_code == 200:
-                logger.info(f"Group successfully created")
-                return create.json()
-            else:
-                logger.error(f"Failed to create group in API req. {server_name}. Status code: {create.status_code}.")
-                return None
+        create = request_with_retries("POST", url, data=data, headers={"cookie": token})
+        # Check if the response was successful
+        if create.status_code == 200:
+            logger.info(f"Group successfully created")
+            return create.json()
+        else:
+            logger.error(f"Failed to create group in API req. {server_name}. Status code: {create.status_code}.")
+            return None
     except Exception as e:
         logger.error(f"Error occurred while updating target {server_name}: {e}")
         return None
